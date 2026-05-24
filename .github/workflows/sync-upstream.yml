@@ -1,6 +1,12 @@
-name: Sync Upstream
+name: AUTO / Sync Upstream
 
 on:
+  pull_request:
+    branches:
+      - ddump_s3
+  push:
+    branches:
+      - ddump_s3
   schedule:
     - cron: "17 19 * * *"
   workflow_dispatch:
@@ -15,8 +21,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  python-ci:
+    name: Python 3.14 CI
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.14"
+
+      - name: Install package
+        run: |
+          set -euo pipefail
+          python -X utf8 -m pip install --upgrade pip
+          python -X utf8 -m pip install --upgrade ".[s3]"
+
+      - name: Run tests
+        run: python -X utf8 -m unittest discover -s tests -v
+
   sync-main:
     name: Sync upstream main to fork main
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     uses: quantman888/.github/.github/workflows/fork-sync.reusable.yml@v1
     with:
       target_branch: main
@@ -31,6 +60,7 @@ jobs:
   open-sync-pr:
     name: Open main to ddump_s3 PR
     needs: [sync-main]
+    if: ${{ needs.sync-main.result == 'success' }}
     uses: quantman888/.github/.github/workflows/branch-sync-pr.reusable.yml@v1
     with:
       source_branch: main
@@ -46,7 +76,7 @@ jobs:
   enable-automerge:
     name: Enable auto-merge for sync PR
     needs: [open-sync-pr]
-    if: ${{ needs.open-sync-pr.outputs.pr_url != '' }}
+    if: ${{ needs.open-sync-pr.result == 'success' && needs.open-sync-pr.outputs.pr_url != '' }}
     uses: quantman888/.github/.github/workflows/automerge-pr.reusable.yml@v1
     with:
       pr_url: ${{ needs.open-sync-pr.outputs.pr_url }}
