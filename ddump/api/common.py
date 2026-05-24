@@ -1,3 +1,4 @@
+import os
 import pathlib
 import time
 
@@ -38,6 +39,11 @@ def _url_to_fs(path, storage_options=None):
         import fsspec
     except ImportError as e:
         raise ImportError('Remote paths require fsspec/s3fs: pip install ddump[s3]') from e
+    if storage_options is None and str(path).startswith('s3://') and os.getenv('AWS_ENDPOINT_URL_S3'):
+        storage_options = {
+            'client_kwargs': {'endpoint_url': os.getenv('AWS_ENDPOINT_URL_S3')},
+            'config_kwargs': {'s3': {'addressing_style': 'path'}},
+        }
     return fsspec.core.url_to_fs(str(path), **(storage_options or {}))
 
 
