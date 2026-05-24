@@ -1,0 +1,58 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "17 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync-main:
+    name: Sync upstream main to fork main
+    uses: quantman888/.github/.github/workflows/fork-sync.reusable.yml@v1
+    with:
+      target_branch: main
+      upstream_repo: wukan1986/ddump
+      upstream_branch: main
+      force_reset: false
+    secrets:
+      GH_APP_ID: ${{ secrets.GH_APP_ID }}
+      GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+      RUNNER_PROBE_TOKEN: ${{ secrets.RUNNER_PROBE_TOKEN }}
+
+  open-sync-pr:
+    name: Open main to ddump_s3 PR
+    needs: [sync-main]
+    uses: quantman888/.github/.github/workflows/branch-sync-pr.reusable.yml@v1
+    with:
+      source_branch: main
+      target_branch: ddump_s3
+      pr_title: "chore(sync): merge upstream main into ddump_s3"
+      pr_body: "Automated upstream sync PR from clean mirror main into ddump_s3."
+      auto_resolve_theirs_paths: ""
+    secrets:
+      GH_APP_ID: ${{ secrets.GH_APP_ID }}
+      GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+      RUNNER_PROBE_TOKEN: ${{ secrets.RUNNER_PROBE_TOKEN }}
+
+  enable-automerge:
+    name: Enable auto-merge for sync PR
+    needs: [open-sync-pr]
+    if: ${{ needs.open-sync-pr.outputs.pr_url != '' }}
+    uses: quantman888/.github/.github/workflows/automerge-pr.reusable.yml@v1
+    with:
+      pr_url: ${{ needs.open-sync-pr.outputs.pr_url }}
+      expected_base_branch: ddump_s3
+      expected_head_branch: main
+      merge_method: merge
+    secrets:
+      GH_APP_ID: ${{ secrets.GH_APP_ID }}
+      GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
