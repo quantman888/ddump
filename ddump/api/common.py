@@ -1,6 +1,5 @@
 import pathlib
 import time
-from functools import lru_cache
 
 import pandas as pd
 
@@ -24,8 +23,70 @@ def start_end_2_name(start, end):
     return f'{start}{START_SEP_END}{end}'
 
 
-@lru_cache(maxsize=4)
-def files_to_dataframe(path, suffix=FILE_SUFFIX):
+def is_remote_path(path) -> bool:
+    return '://' in str(path)
+
+
+def path_join(path, name):
+    if is_remote_path(path):
+        return f'{str(path).rstrip("/")}/{name}'
+    return pathlib.Path(path) / name
+
+
+def _url_to_fs(path, storage_options=None):
+    try:
+        import fsspec
+    except ImportError as e:
+        raise ImportError('Remote paths require fsspec/s3fs: pip install ddump[s3]') from e
+    return fsspec.core.url_to_fs(str(path), **(storage_options or {}))
+
+
+def _mtime_from_info(info):
+    mtime = info.get('LastModified') or info.get('mtime') or info.get('updated') or info.get('created')
+    if hasattr(mtime, 'timestamp'):
+        return mtime.timestamp()
+    if mtime is None:
+        return time.time()
+    return float(mtime)
+
+
+def path_exists(path, storage_options=None) -> bool:
+    if not is_remote_path(path):
+        return pathlib.Path(path).exists()
+    fs, fs_path = _url_to_fs(path, storage_options)
+    return fs.exists(fs_path)
+
+
+def path_mtime(path, storage_options=None) -> float:
+    if not is_remote_path(path):
+        return pathlib.Path(path).stat().st_mtime
+    fs, fs_path = _url_to_fs(path, storage_options)
+    return _mtime_from_info(fs.info(fs_path))
+
+
+def path_mkdir(path, storage_options=None) -> None:
+    if not is_remote_path(path):
+        pathlib.Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def read_parquet(path, storage_options=None):
+    if not is_remote_path(path):
+        return pd.read_parquet(path)
+    fs, fs_path = _url_to_fs(path, storage_options)
+    with fs.open(fs_path, 'rb') as f:
+        return pd.read_parquet(f)
+
+
+def write_parquet(df, path, storage_options=None) -> None:
+    if not is_remote_path(path):
+        df.to_parquet(path, compression='zstd')
+        return
+    fs, fs_path = _url_to_fs(path, storage_options)
+    with fs.open(fs_path, 'wb') as f:
+        df.to_parquet(f, compression='zstd')
+
+
+def files_to_dataframe(path, suffix=FILE_SUFFIX, storage_options=None):
     """目录中文件转DataFrame
 
     文件名有格式要求，用分隔符分成前后两个时间。时间为左闭右闭关系。
@@ -41,24 +102,33 @@ def files_to_dataframe(path, suffix=FILE_SUFFIX):
     pd.DataFrame
 
     """
-    path = pathlib.Path(path)
-    files = list(path.glob(f'*{suffix}'))
-    df = pd.DataFrame([f.name.split('.')[0].split(START_SEP_END) for f in files], columns=['start', 'end'])
+    if is_remote_path(path):
+        fs, fs_path = _url_to_fs(path, storage_options)
+        files = fs.glob(f'{fs_path.rstrip("/")}/*{suffix}')
+        names = [pathlib.PurePosixPath(f).name for f in files]
+        mtimes = [_mtime_from_info(fs.info(f)) for f in files]
+    else:
+        path = pathlib.Path(path)
+        files = list(path.glob(f'*{suffix}'))
+        names = [f.name for f in files]
+        mtimes = [x.stat().st_mtime for x in files]
+
+    df = pd.DataFrame([name.split('.')[0].split(START_SEP_END) for name in names], columns=['start', 'end'])
     # 结束时间
     df['end_s'] = df['end'].apply(lambda x: pd.to_datetime(x).timestamp())
     df['start'] = pd.to_datetime(df['start'])
     df['end'] = pd.to_datetime(df['end'])
     df['path'] = files
     # 文件修改时间
-    df['st_mtime'] = [x.stat().st_mtime for x in files]
+    df['st_mtime'] = mtimes
     # 当前时间，需要立即使用，之后再用就不准了
     df['now'] = time.time()
     return df
 
 
-def timeout_mtime(path) -> float:
+def timeout_mtime(path, storage_options=None) -> float:
     """检查文件超时"""
-    return time.time() - pathlib.Path(path).stat().st_mtime
+    return time.time() - path_mtime(path, storage_options)
 
 
 def filter_range_in_dataframe(df, start, end, file_timeout, data_timeout):

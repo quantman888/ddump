@@ -24,7 +24,13 @@ from ..api.common import (
     files_to_dataframe,
     start_end_2_name,
     filter_range_in_dataframe,
-    timeout_mtime)
+    timeout_mtime,
+    is_remote_path,
+    path_join,
+    path_exists,
+    path_mkdir,
+    read_parquet,
+    write_parquet)
 from ..common import START_SEP_END, get_key, read_obj, write_obj, remove_obj, TEMP_SUFFIX
 
 
@@ -48,7 +54,7 @@ class Dump:
     # 命名参数
     kwargs = {}
 
-    def __init__(self, api, path: str, file_names: List[str]) -> None:
+    def __init__(self, api, path: str, file_names: List[str], storage_options=None) -> None:
         """初始化
 
         Parameters
@@ -62,8 +68,9 @@ class Dump:
 
         """
         self.api = api
-        self.path = pathlib.Path(path)
+        self.path = str(path).rstrip('/') if is_remote_path(path) else pathlib.Path(path)
         self.file_names = file_names
+        self.storage_options = storage_options
         self.reset()
 
     def reset(self) -> None:
@@ -90,7 +97,7 @@ class Dump:
             filename = f'{START_SEP_END.join([self.kwargs[k] for k in self.file_names])}{FILE_SUFFIX}'
             # 处理路径中不能使用的字符
             filename = filename.translate(str.maketrans('\\/:*?"<>|', '_' * 9))
-            self.file_path = self.path / filename
+            self.file_path = path_join(self.path, filename)
         except TypeError as e:
             self.file_path = None
         pass
@@ -111,14 +118,14 @@ class Dump:
         if self.file_path is None:
             raise Exception('请在继承set_parameters时，设置self.file_path')
 
-        if not self.file_path.exists():
+        if not path_exists(self.file_path, self.storage_options):
             return False
 
         if timeout <= 0:
             return True
 
         # 过近，不能重复下载
-        return timeout_mtime(self.file_path) < timeout
+        return timeout_mtime(self.file_path, self.storage_options) < timeout
 
     @retry(wait=wait_random(10, 20), before_sleep=before_sleep_log(logger, logging.DEBUG))
     async def download(self, use_await: bool, kw: List[str], post_download=func_post_download, post_download_kwargs={}) -> None:
@@ -190,14 +197,14 @@ class Dump:
         else:
             df = pd.DataFrame()
 
-        self.path.mkdir(parents=True, exist_ok=True)
+        path_mkdir(self.path, self.storage_options)
 
         # 保存
         level = "WARNING" if len(df) < 30 else "INFO"
         logger.log(level, '保存 {}/{} {} {}', len(df), len(dfs), self.func_name, self.file_path)
 
         try:
-            df.to_parquet(self.file_path, compression='zstd')
+            write_parquet(df, self.file_path, self.storage_options)
             for k, v in self.dfs.items():
                 remove_obj(k)
         except Exception as e:
@@ -210,13 +217,13 @@ class Dump:
         """加载数据"""
         if self.file_path is None:
             raise Exception('请调用set_parameters, 帮助设置file_path')
-        self.df = pd.read_parquet(self.file_path)
+        self.df = read_parquet(self.file_path, self.storage_options)
         return self.df
 
 
 class Dump__start__end(Dump):
 
-    def __init__(self, api, path: str, start_name: str, end_name: str) -> None:
+    def __init__(self, api, path: str, start_name: str, end_name: str, storage_options=None) -> None:
         """
 
         Parameters
@@ -229,7 +236,7 @@ class Dump__start__end(Dump):
             结束时间日期
 
         """
-        Dump.__init__(self, api, path, [start_name, end_name])
+        Dump.__init__(self, api, path, [start_name, end_name], storage_options=storage_options)
         self.start_name = start_name
         self.end_name = end_name
 
@@ -246,7 +253,7 @@ class Dump__start__end(Dump):
         # 生成写入文件名
         start = pd.to_datetime(self.kwargs[self.start_name])
         end = pd.to_datetime(self.kwargs[self.end_name])
-        self.file_path = self.path / f'{start_end_2_name(start, end)}{FILE_SUFFIX}'
+        self.file_path = path_join(self.path, f'{start_end_2_name(start, end)}{FILE_SUFFIX}')
 
     def exists(self, file_timeout: int, data_timeout: int) -> bool:
         """文件是否存在。过近与过远的文件都不需要重复下载
@@ -264,7 +271,7 @@ class Dump__start__end(Dump):
         # 检查范围是否已经下载完
         start = pd.to_datetime(self.kwargs[self.start_name])
         end = pd.to_datetime(self.kwargs[self.end_name])
-        df = filter_range_in_dataframe(files_to_dataframe(self.path),
+        df = filter_range_in_dataframe(files_to_dataframe(self.path, storage_options=self.storage_options),
                                        start=start, end=end,
                                        file_timeout=file_timeout, data_timeout=data_timeout)
 
@@ -272,7 +279,7 @@ class Dump__start__end(Dump):
 
 
 class Dump__date(Dump__start__end):
-    def __init__(self, api, path: str, date_name: str) -> None:
+    def __init__(self, api, path: str, date_name: str, storage_options=None) -> None:
         """一个日期的只是两个日期的特例
 
         Parameters
@@ -283,4 +290,4 @@ class Dump__date(Dump__start__end):
             日期字段名
 
         """
-        Dump__start__end.__init__(self, api, path, date_name, date_name)
+        Dump__start__end.__init__(self, api, path, date_name, date_name, storage_options=storage_options)
