@@ -1,4 +1,4 @@
-name: MANUAL / Publish Nexus PyPI
+name: "[MANUAL] Publish Nexus PyPI"
 
 on:
   workflow_dispatch:

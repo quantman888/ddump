@@ -1,4 +1,4 @@
-name: AUTO / Sync Upstream
+name: "[AUTO] Sync Upstream"
 
 on:
   pull_request:
