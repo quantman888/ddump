@@ -1,25 +1,32 @@
-import pathlib
+import tempfile
+import unittest
+from pathlib import Path
 
 import pandas as pd
-import pyarrow as pa
 
-print(pd.__version__)  # 1.4.1
-print(pa.__version__)  # 7.0.0
 
-dr = pd.date_range(start='2022-01-01', end='2022-01-10', freq='D')
-df = pd.DataFrame(index=dr)
-df['A'] = pd.to_datetime('today')
-df['B'] = 1.0
-df['C'] = 'a'
-df['D'] = 2
+class ParquetTest(unittest.TestCase):
+    def test_read_parquet_directory_with_empty_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "b"
+            root.mkdir()
 
-df.head(1).to_parquet('b/0.parquet')  # not empty dateframe
-df.head(0).to_parquet('b/1.parquet')  # empty dateframe
-df.head(0).to_parquet('b/2.parquet')  # empty dateframe
-df.to_parquet('b/3.parquet')
-pd.read_parquet('b')
+            dr = pd.date_range(start="2022-01-01", end="2022-01-10", freq="D")
+            df = pd.DataFrame(index=dr)
+            df["A"] = pd.to_datetime("today")
+            df["B"] = 1.0
+            df["C"] = "a"
+            df["D"] = 2
 
-# 另一种加载文件的方法
-import pandas as pd
+            df.head(1).to_parquet(root / "0.parquet")
+            df.head(0).to_parquet(root / "1.parquet")
+            df.head(0).to_parquet(root / "2.parquet")
+            df.to_parquet(root / "3.parquet")
 
-df = pd.concat([pd.read_parquet(_) for _ in pathlib.Path('.').glob('20220*')])
+            loaded = pd.read_parquet(root)
+
+            self.assertFalse(loaded.empty)
+
+
+if __name__ == "__main__":
+    unittest.main()
