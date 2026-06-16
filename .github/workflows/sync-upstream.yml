@@ -9,7 +9,6 @@ on:
       - ddump_s3
   schedule:
     - cron: "17 19 * * *"
-  workflow_dispatch:
 
 permissions:
   actions: read
