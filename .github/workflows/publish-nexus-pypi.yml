@@ -14,21 +14,21 @@ permissions:
   id-token: write
 
 jobs:
-  require-publish-branch:
-    name: Require main or ddump_s3 branch
+  require-ddump-s3:
+    name: Require ddump_s3 branch
     runs-on: ubuntu-latest
     steps:
       - name: Check branch
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF_NAME}" != "main" && "${GITHUB_REF_NAME}" != "ddump_s3" ]]; then
-            echo "publish-nexus-pypi.yml must run from main or ddump_s3, got ${GITHUB_REF_NAME}" >&2
+          if [[ "${GITHUB_REF_NAME}" != "ddump_s3" ]]; then
+            echo "publish-nexus-pypi.yml must run from ddump_s3, got ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
 
   publish:
     name: Build and publish ddump
-    needs: [require-publish-branch]
+    needs: [require-ddump-s3]
     uses: quantman888/.github/.github/workflows/python-package-publish.reusable.yml@v1
     with:
       PYTHON_PACKAGE_REPOSITORY_URL: https://nexus.suz-k3s-01.000666.site/repository/pypi-hosted/
