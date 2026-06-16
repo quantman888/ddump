@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${GITHUB_REF_NAME}" != "ddump_s3" ]]; then
-            echo "publish-nexus.yml must run from ddump_s3, got ${GITHUB_REF_NAME}" >&2
+            echo "publish-nexus-pypi.yml must run from ddump_s3, got ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
 
@@ -31,8 +31,8 @@ jobs:
     needs: [require-ddump-s3]
     uses: quantman888/.github/.github/workflows/python-package-publish.reusable.yml@v1
     with:
-      PYTHON_PACKAGE_REPOSITORY_URL: https://nexus.suz.k3s.000666.site/repository/pypi-hosted/
-      PYTHON_PACKAGE_SIMPLE_URL: https://nexus.suz.k3s.000666.site/repository/pypi-hosted/simple/
+      PYTHON_PACKAGE_REPOSITORY_URL: https://nexus.suz-k3s-01.000666.site/repository/pypi-hosted/
+      PYTHON_PACKAGE_SIMPLE_URL: https://nexus.suz-k3s-01.000666.site/repository/pypi-hosted/simple/
       PYTHON_PUSH_PACKAGE: ${{ github.event.inputs.publish == 'true' }}
       PYTHON_SKIP_EXISTING: true
       PYTHON_VERSION: "3.14"
@@ -62,6 +62,6 @@ jobs:
       INFISICAL_DOMAIN: https://key.000666.site
       INFISICAL_PROJECT_SLUG: quant
       INFISICAL_ENV_SLUG: prod
-      INFISICAL_SECRET_PATH: /k3s/suz-k3s-01
+      INFISICAL_SECRET_PATH: /clusters/suz-k3s-01/runtime/nexus
       INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_DDUMP_PUBLISH_IDENTITY_ID }}
       INFISICAL_OIDC_AUDIENCE: https://github.com/quantman888
