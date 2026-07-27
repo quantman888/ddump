@@ -1,0 +1,38 @@
+import asyncio
+
+from jupyter_data_fetch import LazyDownloader
+from jupyter_data_fetch.download import JoinQuantDownloader
+from jupyter_kernel_client import JupyterKernelClient
+
+from ddump.api.dump import Dump
+from examples.jqresearch2.config import HEADERS, SERVER_URL, DATA_ROOT, UID
+
+
+async def download(jqa):
+    path = DATA_ROOT / 'get_all_securities'
+    for types in ['stock', 'futures', 'index']:
+        d = Dump(jqa, path, ['types'])  # ‘stock’, ‘fund’, ‘index’, ‘futures’, ‘etf’, ‘lof’, ‘fja’, ‘fjb’
+        d.set_parameters('get_all_securities', types=types)
+        if not d.exists(timeout=3600 * 1):
+            await d.download(use_await=False, kw=['types'])
+            d.save()
+
+
+async def async_main():
+    with JupyterKernelClient(server_url=SERVER_URL, token=None, headers=HEADERS) as kernel:
+        downloader = JoinQuantDownloader(UID, HEADERS, delete=False)
+        LazyDownloader.set_kernel(kernel)
+        LazyDownloader.set_downloader(downloader)
+
+        import jupyter_data_fetch.wraps.jqdatasdk as jqa
+        await download(jqa)
+
+        downloader.cleanup()
+
+
+def main():
+    asyncio.run(async_main())
+
+
+if __name__ == '__main__':
+    main()
