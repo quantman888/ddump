@@ -3,7 +3,7 @@ import asyncio
 import pandas as pd
 from jupyter_data_fetch import LazyDownloader
 from jupyter_data_fetch.download import JoinQuantDownloader
-from jupyter_kernel_client import KernelClient
+from jupyter_kernel_client import JupyterKernelClient
 
 from ddump.api.dump import Dump__date
 from examples.jqresearch2.config import SERVER_URL, HEADERS, DATA_ROOT, DATA_ROOT_AKSHARE, UID
@@ -37,7 +37,7 @@ async def download(jqr):
 
 
 async def async_main():
-    with KernelClient(server_url=SERVER_URL, token=None, headers=HEADERS) as kernel:
+    with JupyterKernelClient(server_url=SERVER_URL, token=None, headers=HEADERS) as kernel:
         downloader = JoinQuantDownloader(UID, HEADERS, delete=False)
         LazyDownloader.set_kernel(kernel)
         LazyDownloader.set_downloader(downloader)
